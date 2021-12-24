@@ -1,3 +1,5 @@
+**NOTE:** This branch is created from https://github.com/zogvm/Video-Stream-with-RTSP-and-RTP, and modified a few version problems and bugs. This is only used for reference for our main project, and we don't own it.  
+
 How to:
 
 Example:
