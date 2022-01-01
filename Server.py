@@ -3,9 +3,9 @@ import os
 import threading
 from random import randint
 from VideoStream import VideoStream
-class Worker:
+class ServerWorker:
 	def __init__(self, socket, clientAddr):
-		self.socket = socket
+		self.rtsp_socket = socket
 		self.clientAddr = clientAddr
 		self.state = 'INIT' # 'INIT', 'READY', PLAYING'
 		self.videoStream = None
@@ -13,6 +13,13 @@ class Worker:
 		self.event = None
 		self.worker = None
 		self.close = False
+	def run(self):
+		threading.Thread(target=self.receiveRTSPrequest).start()
+	def receiveRTSPrequest(self):
+		while True:
+			data = self.rtsp_socket.recv(1024)
+			if data:
+				self.processRTSPrequest(data)
 	def processRTSPrequest(self, data):
 		print('### RTSP request received: {}'.format(data))
 		request = data.decode().split('\n')
@@ -47,7 +54,7 @@ class Worker:
 			print('TEARDOWN request received')
 			self.event.set()
 			self.replyRTSP('OK_200', seqNum)
-			self.close = True
+			# close RTP socket
 		else:
 			pass
 	def sendRTP(self):
@@ -55,22 +62,28 @@ class Worker:
 	def replyRTSP(self, code, seqNum):
 		if code == 'OK_200':
 			reply = 'RTSP/1.0 200 OK\nCSeq: {}\nSession: {}'.format(seqNum, self.session).encode()
-			self.socket.sendto(reply, self.clientAddr)
+			self.rtsp_socket.send(reply)
 
 if __name__ == '__main__':
 
 	HOST, PORT = '127.0.0.1', 8888
-	server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # TCP: SOCK_STREAM, UDP: SOCK_DGRAM
-	server_socket.bind((HOST, PORT))
+	rtsp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # RTSP: TCP socket
+	rtsp_socket.bind((HOST, PORT))
+
 
 	print('RTSP socket listening...')
-	clients = {} # (addr: Worker Object)
+	rtsp_socket.listen(5)
 	while True:
-		data, addr = server_socket.recvfrom(1024)
-		if addr not in clients:
-			clients[addr] = Worker(server_socket, addr)
-		clients[addr].processRTSPrequest(data)
-		if clients[addr].close == True:
-			del clients[addr]
+		rtsp_client, addr = rtsp_socket.accept()   # this accept {SockID,tuple object},tuple object = {clinet_addr,intNum}!!!
+		ServerWorker(rtsp_client, addr).run()
+	
+	# clients = {} # (addr: Worker Object)
+	# while True:
+	# 	data, addr = server_socket.recvfrom(1024)
+	# 	if addr not in clients:
+	# 		clients[addr] = Worker(server_socket, addr)
+	# 	clients[addr].processRTSPrequest(data)
+	# 	if clients[addr].close == True:
+	# 		del clients[addr]
 
 
