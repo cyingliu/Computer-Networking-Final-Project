@@ -3,16 +3,20 @@ import os
 import threading
 from random import randint
 from VideoStream import VideoStream
+from RtpPacket import RtpPacket
+
 class ServerWorker:
 	def __init__(self, socket, clientAddr):
 		self.rtsp_socket = socket
-		self.clientAddr = clientAddr
+		self.rtp_socket = None
+		self.rtp_addr = clientAddr[0]
+		self.rtp_port = None
 		self.state = 'INIT' # 'INIT', 'READY', PLAYING'
-		self.videoStream = None
+		self.video_stream = None
 		self.session = None
 		self.event = None
 		self.worker = None
-		self.close = False
+
 	def run(self):
 		threading.Thread(target=self.receiveRTSPrequest).start()
 	def receiveRTSPrequest(self):
@@ -32,7 +36,8 @@ class ServerWorker:
 				if os.path.isfile(filename):
 					self.state = 'READY'
 					self.session = randint(100000, 999999)
-					self.videoStream = VideoStream(filename)
+					self.video_stream = VideoStream(filename)
+					self.rtp_port = int(request[2].split(' ')[-1])
 					self.replyRTSP('OK_200', seqNum)
 				else:
 					print('404 not found')
@@ -40,6 +45,7 @@ class ServerWorker:
 			if self.state == 'READY':
 				print('PLAY request received')
 				self.state = 'PLAYING'
+				self.rtp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 				self.event = threading.Event()
 				self.worker = threading.Thread(target=self.sendRTP)
 				self.worker.start()
@@ -54,11 +60,25 @@ class ServerWorker:
 			print('TEARDOWN request received')
 			self.event.set()
 			self.replyRTSP('OK_200', seqNum)
-			# close RTP socket
+			self.rtp_socket.close()
 		else:
 			pass
 	def sendRTP(self):
-		pass
+		
+		while True:
+			if self.event.isSet(): # PAUSE, TEARDOWN
+				break
+			self.event.wait(0.05)
+			data = self.video_stream.getNextFrame()
+			framNum = self.video_stream.framNum
+
+			self.rtp_socket.sendto(self.makeRtpPacket(data, framNum), (self.rtp_addr, self.rtp_port))
+
+	def makeRtpPacket(self, payload, framNum):
+		rtpPacket = RtpPacket()
+		rtpPacket.encode(framNum, payload)
+		return rtpPacket.getPacket()
+	
 	def replyRTSP(self, code, seqNum):
 		if code == 'OK_200':
 			reply = 'RTSP/1.0 200 OK\nCSeq: {}\nSession: {}'.format(seqNum, self.session).encode()
