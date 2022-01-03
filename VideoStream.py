@@ -10,7 +10,7 @@ class VideoStream:
 			frame = self.file.read(framelength)
 			if len(frame) != framelength:
 				raise ValueError('Incomplete frame data')
-			print('----- Next Frame (# {}), length: {} -----'.format(self.framNum, frame))
+			print('----- Next Frame (# {}), length: {} -----'.format(self.framNum, framelength))
 		self.framNum += 1
 		return frame
 		# return "Frame {}".format(self.framNum).encode()
