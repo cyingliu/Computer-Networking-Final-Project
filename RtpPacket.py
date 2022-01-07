@@ -10,8 +10,8 @@ class RtpPacket:
 	def getPacket(self):
 		return self.seqnum + self.payload
 	def decode(self, bytestring):
-		self.seqnum = bytestring[:HEADER_SIZE-1]
-		self.payload = bytestring[HEADER_SIZE-1:]
+		self.seqnum = bytestring[:HEADER_SIZE]
+		self.payload = bytestring[HEADER_SIZE:]
 	def getSeqNum(self):
 		return int.from_bytes(self.seqnum, sys.byteorder)
 	def getPayload(self):

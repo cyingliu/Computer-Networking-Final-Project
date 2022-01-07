@@ -96,14 +96,3 @@ if __name__ == '__main__':
 	while True:
 		rtsp_client, addr = rtsp_socket.accept()   # this accept {SockID,tuple object},tuple object = {clinet_addr,intNum}!!!
 		ServerWorker(rtsp_client, addr).run()
-	
-	# clients = {} # (addr: Worker Object)
-	# while True:
-	# 	data, addr = server_socket.recvfrom(1024)
-	# 	if addr not in clients:
-	# 		clients[addr] = Worker(server_socket, addr)
-	# 	clients[addr].processRTSPrequest(data)
-	# 	if clients[addr].close == True:
-	# 		del clients[addr]
-
-
