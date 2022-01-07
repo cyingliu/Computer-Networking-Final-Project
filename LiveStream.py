@@ -1,5 +1,7 @@
 import cv2
-class LiveStream:
+import pyaudio
+
+class LiveStreamVideo:
     def __init__(self):
         self.framNum = 0
         self.cap = cv2.VideoCapture(0)
@@ -13,13 +15,29 @@ class LiveStream:
         frame = frame.tobytes()
         self.framNum += 1
 
-        # # get frame length
-        # framelength = int(bytearray(self.file.read(5)))
-        # if framelength:
-        #   frame = self.file.read(framelength)
-        #   if len(frame) != framelength:
-        #       raise ValueError('Incomplete frame data')
-        print('----- Next Frame (# {}), length: {} -----'.format(self.framNum, len(frame)))
-        # self.framNum += 1
+        # print('----- Video Next Frame (# {}), length: {} -----'.format(self.framNum, len(frame)))
+        
         return frame
-        # return "Frame {}".format(self.framNum).encode()
+
+class LiveStreamAudio:
+    def __init__(self):
+        self.CHUNK = 16000 # num frame
+        self.FORMAT = pyaudio.paInt16
+        self.CHANNELS = 2
+        self.RATE = 44100 # num frames per second
+        
+        self.p = pyaudio.PyAudio()
+
+        self.stream = self.p.open(format=self.FORMAT,
+                        channels=self.CHANNELS,
+                        rate=self.RATE,
+                        input=True,
+                        frames_per_buffer=self.CHUNK)
+        self.framNum = 0
+
+    def getNextFrame(self):
+
+        frame = self.stream.read(self.CHUNK, exception_on_overflow = False)
+        self.framNum += 1
+        print('----- Audio Next Frame (# {}), length: {} -----'.format(self.framNum, len(frame)))
+        return frame
