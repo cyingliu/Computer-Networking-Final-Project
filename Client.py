@@ -7,6 +7,7 @@ import numpy as np
 import pickle
 
 from RtpPacket import RtpPacket
+from PIL import Image
 
 def recvRtspReply(rtsp_socket):
 	while True:
@@ -17,15 +18,18 @@ def recvRtspReply(rtsp_socket):
 def listenRtp(rtp_socket, video_streamer):
 	
 	while True:
-		data, addr = rtp_socket.recvfrom(20480)
+		data, addr = rtp_socket.recvfrom(57800)
 		if data:
 			rtpPacket = RtpPacket()
 			rtpPacket.decode(data)
 			frame = rtpPacket.getPayload()  
-			
-			inp = np.asarray(bytearray(frame), dtype=np.uint8)
-			i0 = cv2.imdecode(inp, cv2.IMREAD_COLOR)
-			video_streamer.addFrame(i0)
+			inp = np.asarray(bytearray(frame), dtype=np.uint8).reshape(120, 160, 3)
+			im = Image.fromarray(inp)
+			im = im.resize((640, 480))
+			im = np.array(im)
+			# original video stream (read mjpeg) need to decode, live steam (cv2 video capture) doesn't need to decode
+			# i0 = cv2.imdecode(inp, cv2.IMREAD_COLOR) 
+			video_streamer.addFrame(im)
 			
 			print('*** RTP reply received: {}'.format('data'))
 
@@ -53,7 +57,7 @@ class VideoStreamer:
 if __name__ == '__main__':
 	
 	SERVER_HOST, SERVER_PORT = '127.0.0.1', 8888
-	CLIENT_HOST, CLIENT_RTP_PORT = '0.0.0.0', 7777
+	CLIENT_HOST, CLIENT_RTP_PORT = '0.0.0.0', int(sys.argv[1])
 	# RTSP / TCP session
 	rtsp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	rtsp_socket.connect((SERVER_HOST, SERVER_PORT))
@@ -78,13 +82,13 @@ if __name__ == '__main__':
 	time.sleep(0.5)
 	# PLAY
 	rtsp_socket.send(RTSP_msgs[1].encode())
-	time.sleep(3)
+	time.sleep(10)
 	# PAUSE
 	rtsp_socket.send(RTSP_msgs[2].encode())
-	time.sleep(0.5)
+	time.sleep(10)
 	# TEARDOWN
 	rtsp_socket.send(RTSP_msgs[3].encode())
-	video_streamer.event.set()
 	# close windows
+	video_streamer.event.set()
 	
 
