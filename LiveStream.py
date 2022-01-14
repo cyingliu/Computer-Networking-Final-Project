@@ -1,5 +1,6 @@
 import cv2
-class LiveStream:
+import pyaudio
+class LiveStreamVideo:
     def __init__(self):
         self.framNum = 0
         self.cap = cv2.VideoCapture(0)
@@ -13,6 +14,31 @@ class LiveStream:
         # frame = frame.tobytes()
         self.framNum += 1
 
-        print('----- Next Frame (# {}), length: {} -----'.format(self.framNum, len(frame)))
+        print('----- Next Video Frame (# {}), length: {} -----'.format(self.framNum, len(frame)))
         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 12]
         return cv2.imencode('.jpg', frame, encode_param)[1].tostring()
+
+class LiveStreamAudio:
+    def __init__(self):
+        self.framNum = 0
+        
+        self.NUM_CHUNK_PER_FPS = 10
+        self.RATE = 44100 # num frames per second
+        self.CHUNK = int(44100 / 30 * self.NUM_CHUNK_PER_FPS) # num frame
+        self.FORMAT = pyaudio.paInt16
+        self.CHANNELS = 2
+        
+        p = pyaudio.PyAudio()
+        self.stream = p.open(format=self.FORMAT,
+                channels=self.CHANNELS,
+                rate=self.RATE,
+                input=True,
+                frames_per_buffer=self.CHUNK)
+
+    def getNextChunk(self):
+
+        data = self.stream.read(self.CHUNK)
+        self.framNum += 1
+        print('----- Next Audio Chunk (# {}), length: {} -----'.format(self.framNum, len(data)))
+        return data
+
