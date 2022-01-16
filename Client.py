@@ -145,6 +145,7 @@ class Client:
                     '''
                     if currFrameNbr < self.buffNum * BUFFER_SIZE: # late packet
                         continue
+                    print("Current frame number: {}\t Frame number: {}".format(len(rtpPacket.getPayload()), currFrameNbr))
                     self.buffer_video.append(rtpPacket.getPayload())
                     # if self.RESET_STATE:
                         # self.playMovie()
@@ -271,7 +272,7 @@ class Client:
                 if self.playIndex_video < len(self.buffer_video):
                     if self.runEvent.isSet():
                         break
-                    inp = np.asarray(bytearray(self.buffer_video[self.playIndex_video]), dtype=np.uint8).reshape(120, 160, 3)
+                    inp = np.asarray(bytearray(self.buffer_video[self.playIndex_video]), dtype=np.uint8).reshape(90, 160, 3)
                     inp = inp[:, :, [2, 1, 0]]
                     pilImage = Image.fromarray(inp)
 
@@ -318,7 +319,7 @@ class Client:
                 time_start = time.time()
                 print('\t\t\t\tImage Index: {}/{}'.format(self.playIndex_video, len(self.buffer_video)))
                 # pilImage = Image.open(self.writeFrame(self.buffer_video[self.playIndex_video]))
-                inp = np.asarray(bytearray(self.buffer_video[self.playIndex_video]), dtype=np.uint8).reshape(120, 160, 3)
+                inp = np.asarray(bytearray(self.buffer_video[self.playIndex_video]), dtype=np.uint8).reshape(160, 90, 3) # (height, width, 3)
                 inp = inp[:, :, [2, 1, 0]]
                 pilImage = Image.fromarray(inp)
 
