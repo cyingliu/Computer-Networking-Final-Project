@@ -1,6 +1,9 @@
 import cv2
 import pyaudio
 import time
+
+from PIL import Image
+
 class LiveStreamVideo:
     def __init__(self):
         self.framNum = 0
@@ -12,12 +15,15 @@ class LiveStreamVideo:
     def getNextFrame(self):
         ret, frame = self.cap.read()
 
+
+        
         frame = frame.tobytes()
         self.framNum += 1
 
-        print('----- Next Video Frame (# {}), length: {} -----'.format(self.framNum, len(frame)))
         # encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 12]
-        # return cv2.imencode('.jpg', frame)[1].tostring()
+        # frame = cv2.imencode('.jpg', frame)[1].tostring()
+        print('----- Next Video Frame (# {}), length: {} -----'.format(self.framNum, len(frame)))
+        # return frame
         return frame
 
 class LiveStreamAudio:
@@ -29,9 +35,11 @@ class LiveStreamAudio:
         self.CHUNK = int(44100 / 30 * self.NUM_FRAME_PER_CHUNK) # num frame
         self.FORMAT = pyaudio.paInt16
         self.CHANNELS = 2
+
+        self.buffer = []
         
-        p = pyaudio.PyAudio()
-        self.stream = p.open(format=self.FORMAT,
+        self.p = pyaudio.PyAudio()
+        self.stream = self.p.open(format=self.FORMAT,
                 channels=self.CHANNELS,
                 rate=self.RATE,
                 input=True,
@@ -41,8 +49,9 @@ class LiveStreamAudio:
     def getNextChunk(self):
         # self.stream.start_stream()
         data = self.stream.read(self.CHUNK)
+        self.buffer.append(data)
         # self.stream.stop_stream()
         self.framNum += self.NUM_FRAME_PER_CHUNK
-        print('\t\t----- Next Audio Chunk (# {}), length: {} -----'.format(self.framNum, len(data)))
+        print('----- Next Audio Chunk (# {}), length: {} -----'.format(self.framNum, len(data)))
         return data
 

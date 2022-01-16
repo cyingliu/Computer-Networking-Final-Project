@@ -19,7 +19,7 @@ SERVER_HOST, SERVER_PORT = '127.0.0.1', 8888
 CLIENT_HOST = '0.0.0.0'
 
 class Client:
-    def __init__(self, master, rtpPort_video, rtpPort_audio, filename):
+    def __init__(self, master, rtpPort_video, rtpPort_audio, rtpPort_word, filename):
         # tkinter
         self.master = master
         self.master.title("video streaming")
@@ -30,13 +30,17 @@ class Client:
         # videostreamer
         self.buffer_video = []
         self.buffer_audio = []
+        self.buffer_word = []
         self.playIndex_video = 0
         self.playIndex_audio = 0
+        self.playIndex_word = 0
         self.buffNum = 0
+        self.SHOW_TRANSCRIPT = False
         self.RESET_STATE = False
         #RTP
         self.rtpPort_video = rtpPort_video
         self.rtpPort_audio = rtpPort_audio
+        self.rtpPort_word = rtpPort_word
         # self.frameNbr = 0
         #RTSP
         self.state = 'INIT' # 'INIT', 'READY', 'PLAYING'
@@ -44,7 +48,7 @@ class Client:
         self.rtspSeq = 0
         self.filename = filename
         self.requestSent = None
-        self.SETUP_STR = 'SETUP {}\n1\n RTSP/1.0 RTP/UDP {} {}'.format(self.filename, self.rtpPort_video, self.rtpPort_audio)
+        self.SETUP_STR = 'SETUP {}\n1\n RTSP/1.0 RTP/UDP {} {} {}'.format(self.filename, self.rtpPort_video, self.rtpPort_audio, self.rtpPort_word)
         self.PLAY_STR = 'PLAY \n2'
         self.PAUSE_STR = 'PAUSE \n3'
         self.TEARDOWN_STR = 'TEARDOWN \n4'
@@ -65,6 +69,10 @@ class Client:
         self.rtp_socket_audio = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
         self.rtp_socket_audio.settimeout(0.5)
         self.rtp_socket_audio.bind((CLIENT_HOST, self.rtpPort_audio))
+
+        self.rtp_socket_word = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        self.rtp_socket_word.settimeout(0.5)
+        self.rtp_socket_word.bind((CLIENT_HOST, self.rtpPort_word))
 
     def recvRtspReply(self):
         while True:
@@ -104,7 +112,32 @@ class Client:
                 self.state = 'INIT'
                 self.rtp_socket_video.shutdown(socket.SHUT_RDWR)
                 self.rtp_socket_video.close()
+                self.rtp_socket_audio.shutdown(socket.SHUT_RDWR)
+                self.rtp_socket_audio.close()
+                self.rtp_socket_word.shutdown(socket.SHUT_RDWR)
+                self.rtp_socket_word.close()
         #else: print("not in order")
+
+    def listenRtp_word(self):
+        while True:
+            if self.tearEvent.isSet():
+                break
+            try:
+                data, addr = self.rtp_socket_word.recvfrom(4096)
+                if data:
+                    rtpPacket = RtpPacket()
+                    rtpPacket.decode(data)
+                    currFrameNbr = rtpPacket.getSeqNum()
+                    # print('\t\t\t\tReceive Word: {}'.format(currFrameNbr))
+                    self.buffer_word.append(rtpPacket.getPayload())
+                    if currFrameNbr < self.buffNum * BUFFER_SIZE: # late packet
+                        continue
+                    # if self.RESET_STATE:
+                        # self.playMovie()
+                    if len(self.buffer_word) > BUFFER_SIZE//10:
+                        self.reset()
+
+            except: continue
 
     def listenRtp_audio(self):
         while True:
@@ -116,6 +149,7 @@ class Client:
                     rtpPacket = RtpPacket()
                     rtpPacket.decode(data)
                     currFrameNbr = rtpPacket.getSeqNum()
+                    # print('\t\tReceive Audio: {}'.format(currFrameNbr))
                     self.buffer_audio.append(rtpPacket.getPayload())
                     if currFrameNbr < self.buffNum * BUFFER_SIZE: # late packet
                         continue
@@ -136,6 +170,7 @@ class Client:
                     rtpPacket.decode(data)
                     
                     currFrameNbr = rtpPacket.getSeqNum()
+                    # print('Receive Video: {}'.format(currFrameNbr))
                     '''
                     # problem (no need)
                     if currFrameNbr > self.frameNbr: # Discard the late packet
@@ -158,8 +193,10 @@ class Client:
         print('RESETTING BUFFER')
         self.buffer_video = []
         self.buffer_audio = []
+        self.buffer_word = []
         self.playIndex_video = 0
         self.playIndex_audio = 0
+        self.playIndex_word = 0
         self.bar.set(self.playIndex_video)
         self.buffNum += 1
         # self.runEvent.set()
@@ -190,6 +227,9 @@ class Client:
             t = threading.Thread(target=self.listenRtp_audio)
             t.setDaemon(True)
             t.start()
+            t = threading.Thread(target=self.listenRtp_word)
+            t.setDaemon(True)
+            t.start()
             self.playRequestEvent = threading.Event()
             self.playRequestEvent.clear()
             self.rtspSeq = self.rtspSeq + 1
@@ -216,6 +256,7 @@ class Client:
         self.runEvent = threading.Event()
         self.playIndex_video = ((len(self.buffer_video) - 1) // 10) * 10
         self.playIndex_audio = ((len(self.buffer_video) - 1) // 10) * 10 + 10
+        self.playIndex_word = ((len(self.buffer_video) - 1) // 10) * 10 + 10
 
         # threading.Thread(target=self.run_audio_video).start() # not working
         t = threading.Thread(target=self.run_video)
@@ -224,14 +265,19 @@ class Client:
         t = threading.Thread(target=self.run_audio)
         t.setDaemon(True)
         t.start()
+        t = threading.Thread(target=self.run_word)
+        t.setDaemon(True)
+        t.start()
     def stopMovie(self):
         self.runEvent.set()
 
     def backwardMovie(self):
         self.playIndex_video = ((self.playIndex_video - 30*T_SEC)//10) * 10
         self.playIndex_audio = ((self.playIndex_video - 30*T_SEC)//10) * 10 + 10
+        self.playIndex_word = ((self.playIndex_video - 30*T_SEC)//10) * 10 + 10
         if self.playIndex_video < 0 : self.playIndex_video = 0
         if self.playIndex_audio < 0 : self.playIndex_audio = 0
+        if self.playIndex_word < 0 : self.playIndex_word = 0
         self.bar.set(self.playIndex_video)
         self.runEvent.Set()
         print("replay, frame # = ", self.playIndex_video)
@@ -239,8 +285,10 @@ class Client:
     def forwardMovie(self):
         self.playIndex_video = ((self.playIndex_video + 30*T_SEC)//10) * 10
         self.playIndex_audio = ((self.playIndex_video + 30*T_SEC)//10) * 10 + 10
+        self.playIndex_word = ((self.playIndex_video + 30*T_SEC)//10) * 10 + 10
         if self.playIndex_video > len(self.buffer_video) : self.playIndex_video = len(self.buffer_video)
         if self.playIndex_audio > len(self.buffer_audio) * 10 : self.playIndex_audio = len(self.buffer_audio) * 10
+        if self.playIndex_word > len(self.buffer_word) * 10 : self.playIndex_word = len(self.buffer_word) * 10
         self.bar.set(self.playIndex_video)
         self.runEvent.Set()
         print("replay, frame # = ", self.playIndex_video)
@@ -286,6 +334,29 @@ class Client:
                     time.sleep(1/30)
                 self.playIndex_video = int(self.bar.get())
 
+    def run_word(self):
+        while  True:
+            if self.tearEvent.isSet():
+                    break
+            if self.runEvent.isSet():
+                break
+            if self.playIndex_word > len(self.buffer_word) * 10: 
+                self.playIndex_word = len(self.buffer_word) * 10
+                print('Word full, {}/{}'.format(self.playIndex_word, len(self.buffer_word)*10))
+            if self.playIndex_word < len(self.buffer_word) * 10 and len(self.buffer_word) != 0:
+                # time_start = time.time()
+                print('Word Index: {}/{}'.format(self.playIndex_word, len(self.buffer_word)*10))
+                try:
+                    if self.SHOW_TRANSCRIPT:
+                        self.word.set(self.buffer_word[self.playIndex_word//10].decode())
+                    self.playIndex_audio += 10 # NUM_FRAME_PER_CHUNK
+                except:
+                    pass
+                time.sleep(1/30) # wait for listenRTP_audio thread to finish pushing
+                # time_end = time.time()
+                # print('\t\tPlay audio delay: {}'.format(time_end-time_start))
+                self.playIndex_word = (int(self.bar.get())//10)*10 + 10 # update index by scrollbar
+
     def run_audio(self):
         
         while True:
@@ -295,7 +366,7 @@ class Client:
                 break
             if self.playIndex_audio > len(self.buffer_audio) * 10: 
                 self.playIndex_audio = len(self.buffer_audio) * 10
-                print('audio full, {}/{}'.format(self.playIndex_audio, len(self.buffer_audio)*10))
+                print('Audio full, {}/{}'.format(self.playIndex_audio, len(self.buffer_audio)*10))
             if self.playIndex_audio < len(self.buffer_audio) * 10 and len(self.buffer_audio) != 0:
                 time_start = time.time()
                 print('Audio Index: {}/{}'.format(self.playIndex_audio, len(self.buffer_audio)*10))
@@ -306,17 +377,18 @@ class Client:
                     print('*** {}/{}'.format(self.playIndex_video, len(self.buffer_audio)*10))
                 self.playIndex_audio += 10 # NUM_FRAME_PER_CHUNK
                 time_end = time.time()
-                print('\t\tPlay audio delay: {}'.format(time_end-time_start))
+                print('Play audio delay: {}'.format(time_end-time_start))
                 self.playIndex_audio = (int(self.bar.get())//10)*10 + 10 # update index by scrollbar
     def run_video(self):
-        # self.playIndex_video = (len(self.buffer_video) - 1) // 10 * 10
+
         while True:
             if self.runEvent.isSet():
                 break
             if self.playIndex_video > len(self.buffer_video): self.playIndex_video = len(self.buffer_video)
             if self.playIndex_video < len(self.buffer_video) and len(self.buffer_video) != 0:
                 time_start = time.time()
-                print('\t\t\t\tImage Index: {}/{}'.format(self.playIndex_video, len(self.buffer_video)))
+                print('Image Index: {}/{}'.format(self.playIndex_video, len(self.buffer_video)))
+                
                 # pilImage = Image.open(self.writeFrame(self.buffer_video[self.playIndex_video]))
                 inp = np.asarray(bytearray(self.buffer_video[self.playIndex_video]), dtype=np.uint8).reshape(120, 160, 3)
                 inp = inp[:, :, [2, 1, 0]]
@@ -335,7 +407,7 @@ class Client:
                 #print(self.playIndex)
                 time.sleep(1/30) # 30 frames per second
                 time_end = time.time()
-                print('\t\t\t\t\tShow image delay: {}'.format(time_end-time_start))
+                print('Show image delay: {}'.format(time_end-time_start))
             self.playIndex_video = int(self.bar.get()) # update index by scrollbar
     
     def audio(self):
@@ -354,8 +426,20 @@ class Client:
                         rate=self.RATE,
                         output=True,
                         ) # stream_callback=self.callback
+    def setTranscript(self):
+        if self.SHOW_TRANSCRIPT:
+            self.SHOW_TRANSCRIPT = False
+            self.word.set("")
+        else:
+            self.SHOW_TRANSCRIPT = True
     def tkwindow(self):
         """Build GUI."""
+        # Creat text box for transcript
+        self.word = StringVar()
+        self.word.set("")
+        self.text = Label(textvariable=self.word, bg='black', fg='white', width=15,height=3, font=('標楷體', 16))
+        self.text.pack(side=BOTTOM)
+
         bottom_frame = Frame(self.master)
         bottom_frame.pack(side=BOTTOM)
         top_frame = Frame(self.master)
@@ -395,13 +479,19 @@ class Client:
         self.teardown["text"] = "🗑"
         self.teardown["command"] = self.tearRequest
         self.teardown.pack(side=LEFT)
+        
+        # Create Transcript button
+        self.teardown = Button(bottom_frame, width=3, height=1, bg='white')
+        self.teardown["text"] = "💬"
+        self.teardown["command"] = self.setTranscript
+        self.teardown.pack(side=LEFT)
+
         # Create a bar
         self.bar = ttk.Scale(bottom_frame, from_=0, to=BUFFER_SIZE, length=300)
         self.bar.pack(side=LEFT)
         # Create a label to display the movie
         self.label = Label(top_frame, bg='black')
         self.label.pack(side=TOP)
-
     def handler(self): # handle closing GUI window directly without teardown button
         """Handler on explicitly closing the GUI window."""
         self.pauseRequest()
