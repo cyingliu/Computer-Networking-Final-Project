@@ -7,8 +7,8 @@ from LiveStream import LiveStreamVideo, LiveStreamAudio
 from RtpPacket import RtpPacket
 import speech_recognition as sr
 import wave
-
 import time
+
 
 class ServerWorker:
     def __init__(self, socket, clientAddr, live_stream_video, live_stream_audio):
@@ -27,17 +27,18 @@ class ServerWorker:
         self.event = None
         self.worker_video = None
         self.worker_audio = None
-
         self.framNum_video = 0 # for aligning video and audio
         self.framNum_audio = 0
 
     def run(self):
         threading.Thread(target=self.receiveRTSPrequest).start()
+
     def receiveRTSPrequest(self):
         while True:
             data = self.rtsp_socket.recv(1024)
             if data:
                 self.processRTSPrequest(data)
+
     def processRTSPrequest(self, data):
         print('### RTSP request received: {}'.format(data))
         request = data.decode().split('\n')
@@ -51,8 +52,7 @@ class ServerWorker:
                 self.rtp_port_video = int(request[2].split(' ')[-3])
                 self.rtp_port_audio = int(request[2].split(' ')[-2])
                 self.rtp_port_word = int(request[2].split(' ')[-1])
-                self.replyRTSP('OK_200', seqNum)
-                
+                self.replyRTSP('OK_200', seqNum)               
         elif requestType == 'PLAY':
             if self.state == 'READY':
                 print('PLAY request received')
@@ -61,11 +61,7 @@ class ServerWorker:
                 self.rtp_socket_audio = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 self.rtp_socket_word = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 self.event = threading.Event()
-                # self.worker_video = threading.Thread(target=self.sendRTP_video)
-                # self.worker_audio = threading.Thread(target=self.sendRTP_audio)
                 self.worker = threading.Thread(target=self.sendRTP_video_and_audio)
-                # self.worker_audio.start()
-                # self.worker_video.start()
                 self.worker.start()
                 self.replyRTSP('OK_200', seqNum)
         elif requestType == 'PAUSE':
@@ -78,9 +74,12 @@ class ServerWorker:
             print('TEARDOWN request received')
             self.event.set()
             self.replyRTSP('OK_200', seqNum)
+            self.worker.join()
             self.rtp_socket_video.close()
-        else:
-            pass
+            self.rtp_socket_audio.close()
+            self.rtp_socket_word.close()
+        else: pass
+
     def asr(self, framNum):
         WAV_OUTPUT_FILE = os.path.join('cache', '{}.wav'.format(self.session))
         wf = wave.open(WAV_OUTPUT_FILE, 'wb')
@@ -105,13 +104,15 @@ class ServerWorker:
         while  True:
             tot_start_time = time.time()
             if self.event.isSet():
+                asr_thread.join()
                 break
             # audio, delay 0.3 sec
             start_time=time.time()
             data = self.live_stream_audio.getNextChunk() # delay 0-0.008 sec
             framNum = self.live_stream_video.framNum
             if framNum > 9:
-                threading.Thread(target=self.asr, args=(framNum,)).start()
+                asr_thread = threading.Thread(target=self.asr, args=(framNum,))
+                asr_thread.start()
             self.rtp_socket_audio.sendto(self.makeRtpPacket(data, framNum), (self.rtp_addr, self.rtp_port_audio))
             end_time = time.time()
             print('Total Audio Delay: {}'.format(end_time-start_time))
@@ -129,26 +130,6 @@ class ServerWorker:
             tot_end_time = time.time()
             # print('Total 10 frame delay: {} ({})'.format(tot_end_time-tot_start_time, tot_end_time-tot_start_time-1/3))
 
-
-    def sendRTP_video(self):
-        
-        while True:
-            if self.event.isSet(): # PAUSE, TEARDOWN
-                break
-            self.event.wait(1/30-0.002-0.014+0.005)
-            data = self.live_stream_video.getNextFrame()
-            framNum = self.live_stream_video.framNum
-            self.framNum_video = framNum
-            self.rtp_socket_video.sendto(self.makeRtpPacket(data, framNum), (self.rtp_addr, self.rtp_port_video))
-    def sendRTP_audio(self):
-        while True:
-            if self.event.isSet(): # PAUSE, TEARDOWN
-                break
-            # self.event.wait()
-            data = self.live_stream_audio.getNextChunk()
-            framNum = self.live_stream_video.framNum
-            self.rtp_socket_audio.sendto(self.makeRtpPacket(data, framNum), (self.rtp_addr, self.rtp_port_audio))
-
     def makeRtpPacket(self, payload, framNum):
         rtpPacket = RtpPacket()
         rtpPacket.encode(framNum, payload)
@@ -159,10 +140,11 @@ class ServerWorker:
             reply = 'RTSP/1.0 200 OK\nCSeq: {}\nSession: {}'.format(seqNum, self.session).encode()
             self.rtsp_socket.send(reply)
 
+
 if __name__ == '__main__':
 
-    HOST, PORT = '127.0.0.1', 8888
-    # HOST, PORT = '192.168.1.106', 8888
+    HOST, PORT = '127.0.0.1', 8888 # For local network (server and client seperate on 2 computers)
+    # HOST, PORT = '127.0.0.1', 8888 # For one host (on the same computer) 
     rtsp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # RTSP: TCP socket
     rtsp_socket.bind((HOST, PORT))
 
