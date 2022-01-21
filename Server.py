@@ -37,7 +37,7 @@ class ServerWorker:
 					self.state = 'READY'
 					self.session = randint(100000, 999999)
 					self.video_stream = VideoStream(filename)
-					self.rtp_port = int(request[2].split(' ')[-1])
+					self.rtp_port = int(request[2].split(' ')[-3])
 					self.replyRTSP('OK_200', seqNum)
 				else:
 					print('404 not found')
